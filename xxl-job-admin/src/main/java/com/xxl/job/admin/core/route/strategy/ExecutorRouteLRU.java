@@ -5,8 +5,10 @@ import com.xxl.job.core.biz.model.ReturnT;
 import com.xxl.job.core.biz.model.TriggerParam;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -71,6 +73,29 @@ public class ExecutorRouteLRU extends ExecutorRouter {
     public ReturnT<String> route(TriggerParam triggerParam, List<String> addressList) {
         String address = route(triggerParam.getJobId(), addressList);
         return new ReturnT<String>(address);
+    }
+
+    public static void main(String[] args) {
+        LinkedHashMap<String, String> map = new LinkedHashMap<String, String>(8, 0.75f, true){
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                System.out.println("------>"+eldest);
+                return super.removeEldestEntry(eldest);
+            }
+        };
+        for(int i=0;i<20;i++){
+            map.put(String.valueOf(i), String.valueOf(i));
+            print(map);
+            System.out.println("===================\r\n");
+            map.get("5");
+        }
+    }
+
+    private static void print(LinkedHashMap<String, String> map){
+        Iterator<Map.Entry<String, String>> iterator = map.entrySet().iterator();
+        while(iterator.hasNext()){
+            System.out.println(iterator.next().getKey());
+        }
     }
 
 }

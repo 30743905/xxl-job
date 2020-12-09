@@ -4,6 +4,8 @@ import com.xxl.job.admin.core.route.ExecutorRouter;
 import com.xxl.job.core.biz.model.ReturnT;
 import com.xxl.job.core.biz.model.TriggerParam;
 
+import org.apache.ibatis.logging.stdout.StdOutImpl;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -17,6 +19,7 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class ExecutorRouteLFU extends ExecutorRouter {
 
+    //<jobId,<address,count>>
     private static ConcurrentMap<Integer, HashMap<String, Integer>> jobLfuMap = new ConcurrentHashMap<Integer, HashMap<String, Integer>>();
     private static long CACHE_VALID_TIME = 0;
 
@@ -64,7 +67,6 @@ public class ExecutorRouteLFU extends ExecutorRouter {
         });
 
         Map.Entry<String, Integer> addressItem = lfuItemList.get(0);
-        String minAddress = addressItem.getKey();
         addressItem.setValue(addressItem.getValue() + 1);
 
         return addressItem.getKey();
@@ -74,6 +76,15 @@ public class ExecutorRouteLFU extends ExecutorRouter {
     public ReturnT<String> route(TriggerParam triggerParam, List<String> addressList) {
         String address = route(triggerParam.getJobId(), addressList);
         return new ReturnT<String>(address);
+    }
+
+    public static void main(String[] args) {
+        ExecutorRouteLFU routeLFU = new ExecutorRouteLFU();
+        List<String> list = Arrays.asList("127.0.0.1", "127.0.0.2", "127.0.0.3");
+        for(;;){
+            String ret = routeLFU.route(1, list);
+            System.out.println(ret);
+        }
     }
 
 }

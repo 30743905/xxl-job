@@ -11,10 +11,10 @@ package com.xxl.job.executor.test;
 public class JustForDemoException extends RuntimeException {
     private static final long serialVersionUID = 2134186859756705446L;
 
-    @Override
+    /*@Override
     public Throwable fillInStackTrace() {
         return this;
-    }
+    }*/
 
     private static void method1() {
         System.out.println("in method 1");

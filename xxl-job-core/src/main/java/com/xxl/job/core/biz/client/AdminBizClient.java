@@ -4,7 +4,11 @@ import com.xxl.job.core.biz.AdminBiz;
 import com.xxl.job.core.biz.model.HandleCallbackParam;
 import com.xxl.job.core.biz.model.RegistryParam;
 import com.xxl.job.core.biz.model.ReturnT;
+import com.xxl.job.core.util.GsonTool;
 import com.xxl.job.core.util.XxlJobRemotingUtil;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -14,6 +18,7 @@ import java.util.List;
  * @author xuxueli 2017-07-28 22:14:52
  */
 public class AdminBizClient implements AdminBiz {
+    private Logger logger = LoggerFactory.getLogger(AdminBizClient.class);
 
     public AdminBizClient() {
     }
@@ -34,6 +39,7 @@ public class AdminBizClient implements AdminBiz {
 
     @Override
     public ReturnT<String> callback(List<HandleCallbackParam> callbackParamList) {
+        logger.debug(addressUrl+"api/callback 发送rest， data:{}", GsonTool.toJson(callbackParamList));
         return XxlJobRemotingUtil.postBody(addressUrl+"api/callback", accessToken, timeout, callbackParamList, String.class);
     }
 
