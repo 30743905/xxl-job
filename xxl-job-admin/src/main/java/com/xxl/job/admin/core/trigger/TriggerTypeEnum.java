@@ -8,8 +8,9 @@ import com.xxl.job.admin.core.util.I18nUtil;
  * @author xuxueli 2018-09-16 04:56:41
  */
 public enum TriggerTypeEnum {
-
+    //手工触发
     MANUAL(I18nUtil.getString("jobconf_trigger_type_manual")),
+    //CRON表达式触发
     CRON(I18nUtil.getString("jobconf_trigger_type_cron")),
     RETRY(I18nUtil.getString("jobconf_trigger_type_retry")),
     PARENT(I18nUtil.getString("jobconf_trigger_type_parent")),

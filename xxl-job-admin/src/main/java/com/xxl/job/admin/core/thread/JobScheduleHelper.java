@@ -15,6 +15,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * @author xuxueli 2019-05-21
  */
@@ -42,6 +44,7 @@ public class JobScheduleHelper {
             public void run() {
 
                 try {
+                    //随机休眠，避免同时启动
                     TimeUnit.MILLISECONDS.sleep(5000 - System.currentTimeMillis()%1000 );
                 } catch (InterruptedException e) {
                     if (!scheduleThreadToStop) {
@@ -52,6 +55,7 @@ public class JobScheduleHelper {
 
                 // pre-read count: treadpool-size * trigger-qps (each trigger cost 50ms, qps = 1000/50 = 20)
                 int preReadCount = (XxlJobAdminConfig.getAdminConfig().getTriggerPoolFastMax() + XxlJobAdminConfig.getAdminConfig().getTriggerPoolSlowMax()) * 20;
+                logger.info("每次加载limit:{}", preReadCount);
 
                 while (!scheduleThreadToStop) {
 
@@ -69,6 +73,9 @@ public class JobScheduleHelper {
                         connAutoCommit = conn.getAutoCommit();
                         conn.setAutoCommit(false);
 
+                        /**
+                         * 为了保证分布式一致性先上悲观锁：使用select  xx  for update来实现
+                         */
                         preparedStatement = conn.prepareStatement(  "select * from xxl_job_lock where lock_name = 'schedule_lock' for update" );
                         preparedStatement.execute();
 
@@ -76,20 +83,32 @@ public class JobScheduleHelper {
 
                         // 1、pre read
                         long nowTime = System.currentTimeMillis();
+                        /**
+                         * 轮询db，找出trigger_next_time（下次触发时间）在距now 5秒内的任务
+                         *  trigger_status代表触发状态处于启动的任务
+                         *  trigger_next_time代表 任务下次 执行触发的时间
+                         *
+                         *  拿到了距now 5秒内的任务列表数据：scheduleList，分三种情况处理：for循环遍历scheduleList集合
+                         *      1、对到达now时间后的任务：（超出now 5秒外）：直接跳过不执行； 重置trigger_next_time；
+                         *      2、对到达now时间后的任务：（超出now 5秒内）：线程执行触发逻辑；
+                         *          若任务下一次触发时间是在5秒内， 则放到时间轮内（Map<Integer, List<Integer>> 秒数(1-60) => 任务id列表）；再重置trigger_next_time
+                         *      3、对未到达now时间的任务：直接放到时间轮内；重置trigger_next_time 。
+                         */
                         List<XxlJobInfo> scheduleList = XxlJobAdminConfig.getAdminConfig().getXxlJobInfoDao().scheduleJobQuery(nowTime + PRE_READ_MS, preReadCount);
+                        logger.info("加载完成, scheduleList:{}", scheduleList);
                         if (scheduleList!=null && scheduleList.size()>0) {
                             // 2、push time-ring
                             for (XxlJobInfo jobInfo: scheduleList) {
 
                                 // time-ring jump
-                                if (nowTime > jobInfo.getTriggerNextTime() + PRE_READ_MS) {
+                                if (nowTime > jobInfo.getTriggerNextTime() + PRE_READ_MS) {//触发过期5s，则任务过期，重新刷新下一个触发时间
                                     // 2.1、trigger-expire > 5s：pass && make next-trigger-time
                                     logger.warn(">>>>>>>>>>> xxl-job, schedule misfire, jobId = " + jobInfo.getId());
 
                                     // fresh next
                                     refreshNextValidTime(jobInfo, new Date());
 
-                                } else if (nowTime > jobInfo.getTriggerNextTime()) {
+                                } else if (nowTime > jobInfo.getTriggerNextTime()) {//当前时间大于触发时间，但是小于5秒，立即触发执行
                                     // 2.2、trigger-expire < 5s：direct-trigger && make next-trigger-time
 
                                     // 1、trigger
@@ -97,10 +116,11 @@ public class JobScheduleHelper {
                                     logger.debug(">>>>>>>>>>> xxl-job, schedule push trigger : jobId = " + jobInfo.getId() );
 
                                     // 2、fresh next
+                                    //更新job下次触发时间
                                     refreshNextValidTime(jobInfo, new Date());
 
                                     // next-trigger-time in 5s, pre-read again
-                                    if (jobInfo.getTriggerStatus()==1 && nowTime + PRE_READ_MS > jobInfo.getTriggerNextTime()) {
+                                    if (jobInfo.getTriggerStatus()==1 && nowTime + PRE_READ_MS > jobInfo.getTriggerNextTime()) {//下次触发时间和当前时间差距5秒内
 
                                         // 1、make ring second
                                         int ringSecond = (int)((jobInfo.getTriggerNextTime()/1000)%60);
@@ -208,6 +228,16 @@ public class JobScheduleHelper {
         scheduleThread.start();
 
 
+        /**
+         * 时间轮数据结构： Map<Integer, List<Integer>>  key是hash计算触发时间获得的秒数(1-60)，value是任务id列表
+         *
+         * 入轮：扫描任务触发时:
+         *      1、本次任务处理完成，但下一次触发时间是在5秒内
+         *      2、本次任务未达到触发时间
+         * 出轮：获取当前时间秒数，从时间轮内移出当前秒数前2个秒数的任务id列表， 依次进行触发任务；（避免处理耗时太长，跨过刻度，多向前校验一秒）
+         *
+         * 增加时间轮的目的是：任务过多可能会延迟，为了保障触发时间尽可能和 任务设置的触发时间尽量一致，把即将要触发的任务提前放到时间轮里，每秒来触发时间轮相应节点的任务
+         */
         // ring thread
         ringThread = new Thread(new Runnable() {
             @Override
@@ -291,6 +321,7 @@ public class JobScheduleHelper {
         ringItemData.add(jobId);
 
         logger.debug(">>>>>>>>>>> xxl-job, schedule push time-ring : " + ringSecond + " = " + Arrays.asList(ringItemData) );
+        logger.info("schedule push time-ring:{}", Arrays.asList(ringItemData));
     }
 
     public void toStop(){
