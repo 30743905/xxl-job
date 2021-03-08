@@ -95,6 +95,7 @@ public class JobThread extends Thread{
 
     	// init
     	try {
+    		// 调用IJobHandler.init方法，如@XxlJob(init=xxx)即在这里调用
 			handler.init();
 		} catch (Throwable e) {
     		logger.error(e.getMessage(), e);
@@ -102,7 +103,10 @@ public class JobThread extends Thread{
 
 		// execute
 		while(!toStop){
+			// running=false表示当前JobThread没有在处理作业
+			// isRunningOrHasQueue()中判断JobThread是否运行用到该值以及triggerQueue
 			running = false;
+			// 空闲次数累加+1
 			idleTimes++;
 
             TriggerParam triggerParam = null;
@@ -111,18 +115,25 @@ public class JobThread extends Thread{
 				// to check toStop signal, we need cycle, so wo cannot use queue.take(), instand of poll(timeout)
 				triggerParam = triggerQueue.poll(3L, TimeUnit.SECONDS);
 				if (triggerParam!=null) {
+					// running=true表示当前JobThread正在处理作业
 					running = true;
+					// 重置空闲统计次数
 					idleTimes = 0;
 					triggerLogIdSet.remove(triggerParam.getLogId());
 
 					// log filename, like "logPath/yyyy-MM-dd/9999.log"
+					// 初始化日志文件
 					String logFileName = XxlJobFileAppender.makeLogFileName(new Date(triggerParam.getLogDateTime()), triggerParam.getLogId());
 					XxlJobFileAppender.contextHolder.set(logFileName);
+					// 将分片信息注入到线程上下文中：InheritableThreadLocal
 					ShardingUtil.setShardingVo(new ShardingUtil.ShardingVO(triggerParam.getBroadcastIndex(), triggerParam.getBroadcastTotal()));
 
 					// execute
 					XxlJobLogger.log("<br>----------- xxl-job job execute start -----------<br>----------- Param:" + triggerParam.getExecutorParams());
 
+					// executorTimeout:作业执行超时控制
+					// 正常执行作业是handler.execute(triggerParam.getExecutorParams())，
+					// 如果带有超时控制，则封装FutureTask放入到线程中异步执行，超时则触发中断并返回超时异常
 					if (triggerParam.getExecutorTimeout() > 0) {
 						// limit timeout
 						Thread futureThread = null;
@@ -148,7 +159,7 @@ public class JobThread extends Thread{
 							futureThread.interrupt();
 						}
 					} else {
-						// just execute
+						// 调用对应的IJobHandler处理作业
 						executeResult = handler.execute(triggerParam.getExecutorParams());
 					}
 
@@ -164,6 +175,7 @@ public class JobThread extends Thread{
 					XxlJobLogger.log("<br>----------- xxl-job job execute end(finish) -----------<br>----------- ReturnT:" + executeResult);
 
 				} else {
+					// 连续超时30次(每次3秒)，即90秒内JobThread一直空闲，则销毁JobThread
 					if (idleTimes > 30) {
 						if(triggerQueue.size() == 0) {	// avoid concurrent trigger causes jobId-lost
 							XxlJobExecutor.removeJobThread(jobId, "excutor idel times over limit.");
@@ -180,15 +192,18 @@ public class JobThread extends Thread{
 				String errorMsg = stringWriter.toString();
 				executeResult = new ReturnT<String>(ReturnT.FAIL_CODE, errorMsg);
 
+				// 作业执行异常，则将异常信息写入到日志中
 				XxlJobLogger.log("<br>----------- JobThread Exception:" + errorMsg + "<br>----------- xxl-job job execute end(error) -----------");
 			} finally {
                 if(triggerParam != null) {
                     // callback handler info
                     if (!toStop) {
                         // commonm
+						// JobThread未停止场景下，异步回调机制将执行结果推送到admin
                         TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTime(), executeResult));
                     } else {
                         // is killed
+						// JobThread停止场景下，异步回调机制将kill异常推送到admin
                         ReturnT<String> stopResult = new ReturnT<String>(ReturnT.FAIL_CODE, stopReason + " [job running, killed]");
                         TriggerCallbackThread.pushCallBack(new HandleCallbackParam(triggerParam.getLogId(), triggerParam.getLogDateTime(), stopResult));
                     }
@@ -197,6 +212,7 @@ public class JobThread extends Thread{
         }
 
 		// callback trigger request in queue
+		// JobThread被kill，检查下triggerQueue是否还有等待触发作业，如果有则向admin推送异常信息
 		while(triggerQueue !=null && triggerQueue.size()>0){
 			TriggerParam triggerParam = triggerQueue.poll();
 			if (triggerParam!=null) {
@@ -208,6 +224,7 @@ public class JobThread extends Thread{
 
 		// destroy
 		try {
+			// 销毁IJobHandler，调用IJobHandler.destroy方法，如@XxlJob(destroy=xxx)即在这里调用
 			handler.destroy();
 		} catch (Throwable e) {
 			logger.error(e.getMessage(), e);

@@ -40,7 +40,7 @@ public class SampleXxlJob {
     public ReturnT<String> demoJobHandler(String param) throws Exception {
         XxlJobLogger.log("XXL-JOB, Hello World.");
         logger.info("begin===========");
-        for (int i = 0; i < 30; i++) {
+        for (int i = 0; i < 5; i++) {
             XxlJobLogger.log("beat at:" + i);
             TimeUnit.SECONDS.sleep(2);
         }
@@ -224,13 +224,14 @@ public class SampleXxlJob {
     @XxlJob(value = "demoJobHandler2", init = "init", destroy = "destroy")
     public ReturnT<String> demoJobHandler2(String param) throws Exception {
         XxlJobLogger.log("XXL-JOB, Hello World.");
+        logger.info(">>>>>>>>>invoke  demoJobHandler2");
         return ReturnT.SUCCESS;
     }
     public void init(){
-        logger.info("init");
+        logger.info(">>>>>>>>>>>init");
     }
     public void destroy(){
-        logger.info("destory");
+        logger.info(">>>>>>>>>>>>>destory");
     }
 
 

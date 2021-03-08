@@ -36,6 +36,13 @@ public class JobScheduleHelper {
     private volatile boolean ringThreadToStop = false;
     private volatile static Map<Integer, List<Integer>> ringData = new ConcurrentHashMap<>();
 
+
+    /**
+     * XXL-JOB 任务执行中启动了两个线程：
+     * （1）线程 scheduleThread 运行中不断的从任务表中查询近5秒内要执行的任务，如果当前时间大于任务接下来要执行的时间则立即执行，否则将任务执行时间除以 1000 变为秒之后再与 60 求余添加到时间轮中。
+     * （2）XXL-JOB 时间轮实现方式比较简单，就是一个 Map 结构数据，key值0-60，value是任务ID列表：Map<Integer, List> ringData
+     * （3）线程 ringThread 运行中不断根据当前时间求余从 时间轮 ringData 中获取任务列表，取出任务之后执行任务。
+     */
     public void start(){
 
         // schedule thread
@@ -54,6 +61,7 @@ public class JobScheduleHelper {
                 logger.info(">>>>>>>>> init xxl-job admin scheduler success.");
 
                 // pre-read count: treadpool-size * trigger-qps (each trigger cost 50ms, qps = 1000/50 = 20)
+                // 每次读取到任务个数
                 int preReadCount = (XxlJobAdminConfig.getAdminConfig().getTriggerPoolFastMax() + XxlJobAdminConfig.getAdminConfig().getTriggerPoolSlowMax()) * 20;
                 logger.info("每次加载limit:{}", preReadCount);
 
@@ -112,6 +120,7 @@ public class JobScheduleHelper {
                                     // 2.2、trigger-expire < 5s：direct-trigger && make next-trigger-time
 
                                     // 1、trigger
+                                    // 执行任务
                                     JobTriggerPoolHelper.trigger(jobInfo.getId(), TriggerTypeEnum.CRON, -1, null, null, null);
                                     logger.debug(">>>>>>>>>>> xxl-job, schedule push trigger : jobId = " + jobInfo.getId() );
 
@@ -271,6 +280,7 @@ public class JobScheduleHelper {
                             // do trigger
                             for (int jobId: ringItemData) {
                                 // do trigger
+                                // 执行任务
                                 JobTriggerPoolHelper.trigger(jobId, TriggerTypeEnum.CRON, -1, null, null, null);
                             }
                             // clear

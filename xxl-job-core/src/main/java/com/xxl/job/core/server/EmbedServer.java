@@ -192,18 +192,23 @@ public class EmbedServer {
             // services mapping
             try {
                 if ("/beat".equals(uri)) {
+                    System.out.println("*******/beat");
                     return executorBiz.beat();
                 } else if ("/idleBeat".equals(uri)) {
+                    System.out.println("*******/idleBeat");
                     IdleBeatParam idleBeatParam = GsonTool.fromJson(requestData, IdleBeatParam.class);
                     return executorBiz.idleBeat(idleBeatParam);
                 } else if ("/run".equals(uri)) {
+                    System.out.println("*******/run");
                     TriggerParam triggerParam = GsonTool.fromJson(requestData, TriggerParam.class);
                     return executorBiz.run(triggerParam);
                 } else if ("/kill".equals(uri)) {
+                    System.out.println("*******/kill");
                     logger.info("receive kill, data:{}", requestData);
                     KillParam killParam = GsonTool.fromJson(requestData, KillParam.class);
                     return executorBiz.kill(killParam);
                 } else if ("/log".equals(uri)) {
+                    System.out.println("*******/log");
                     LogParam logParam = GsonTool.fromJson(requestData, LogParam.class);
                     return executorBiz.log(logParam);
                 } else {
